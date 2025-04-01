@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Polling Division Map</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCuzk2j_yVpNhjMsxE5g4cKGeBv8Hwaf8g"></script>
+    <script>
+        let map;
+        let polygons = {}; // Store polling division polygons
+        let currentView = 1; // Toggle between views
+        let overallLeadingParty = "UNC"; // Default overall leader
+
+        // Party colors
+        const partyColors = {
+            "UNC": "#FFFF00",  // Yellow
+            "PNM": "#FF0000",  // Red
+            "Other": "#008000" // Green
+        };
+
+        // Function to fetch polling data from Google Sheets
+        async function fetchPollingData() {
+            const sheetId = "1Hld7AQVqveB8F1xE2XBe3zj_P_KeEhm2BNutcN6o3HM";
+            const range = "ASJSummary!A1:F9"; // Adjust based on your sheet structure
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=AIzaSyCuzk2j_yVpNhjMsxE5g4cKGeBv8Hwaf8g`;
+
+            try {
+                let response = await fetch(url);
+                let data = await response.json();
+                determineOverallLeadingParty(data.values);
+                updatePolygonColors(data.values);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+
+        // Function to determine the overall leading party
+        function determineOverallLeadingParty(rows) {
+            let partyCounts = { "UNC": 0, "PNM": 0, "Other": 0 };
+
+            for (let i = 1; i < rows.length; i++) {
+                let leadingParty = rows[i][1]; // Column B: Leading Party
+                if (partyCounts[leadingParty] !== undefined) {
+                    partyCounts[leadingParty]++;
+                }
+            }
+
+            // Find the party with the most wins across all polling divisions
+            overallLeadingParty = Object.keys(partyCounts).reduce((a, b) => partyCounts[a] > partyCounts[b] ? a : b);
+        }
+
+        // Function to update polygon colors based on current view
+        function updatePolygonColors(rows) {
+            for (let i = 1; i < rows.length; i++) {
+                let pollingDivision = rows[i][0]; // Column A: Polling Division
+                let leadingParty = rows[i][1];    // Column B: Leading Party
+
+                if (polygons[pollingDivision]) {
+                    polygons[pollingDivision].setOptions({
+                        fillColor: currentView === 1 ? partyColors[leadingParty] : partyColors[overallLeadingParty],
+                        fillOpacity: 0.6
+                    });
+                }
+            }
+        }
+
+        // Initialize the map and load KML
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 10.64264, lng: -61.4312 },
+                zoom: 12
+            });
+
+            // Load KML with polygons
+            const kmlLayer = new google.maps.KmlLayer({
+                url: "https://drive.google.com/file/d/1C3buRM0phE9nePQbydzqw98YgdloBPQp/view?usp=sharing",
+                map: map
+            });
+
+            // Store polygons (use KML event listener to access features)
+            google.maps.event.addListener(kmlLayer, "click", function(event) {
+                let pollingDivision = event.featureData.name; // Match to Sheet
+                if (pollingDivision) {
+                    polygons[pollingDivision] = event.featureData;
+                }
+            });
+
+            // Fetch polling data every 5 seconds and toggle views
+            fetchPollingData();
+            setInterval(() => {
+                currentView = currentView === 1 ? 2 : 1; // Toggle between individual & overall leader
+                fetchPollingData();
+            }, 5000);
+        }
+    </script>
+</head>
+<body onload="initMap()">
+    <h1>Polling Division Map</h1>
+    <div id="map" style="width: 100%; height: 600px;"></div>
+</body>
+</html>
